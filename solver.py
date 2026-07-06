@@ -1,26 +1,22 @@
-from pathlib import Path
+import time
 import numpy as np
+import matplotlib.pyplot as plt
 
 from interaction import Interaction, ExternalPotential
-from iofunctions import InData, read_parameters
+from neuraldft_simulate import simulate
 
 '''
 The implementation in this solver is based on Percus' 1982 paper:
 "One-Dimensional Classical Fluid with Nearest-Neighbor Interaction in Arbitrary External Field"
 '''
-def solve(parameter_file: str = "parameters.dat") -> tuple[np.ndarray, np.ndarray, float]:
-    indata = InData()
-    read_parameters(parameter_file, indata)
-
-    inter = Interaction(indata.type, sigma=1.0, r0=indata.r0, epsilon=indata.eps)
-    ext = ExternalPotential(indata.pot_file, indata.mu, indata.temp)
+def solve(inter: Interaction, ext: ExternalPotential, mu:float, beta:float) -> tuple[np.ndarray, np.ndarray, float]:
 
     #W(x)
-    Wvec = np.exp(-ext.beta * (ext.Vext - ext.mu)) #Eq. right after Eq.(2.7)
+    Wvec = np.exp(-beta * (ext.V - mu)) #Eq. right after Eq.(2.7)
     
     #Emat is already multiplied by dx, do not multiply it again later on
     separation = np.subtract.outer(ext.xg, ext.xg) #Prepare to create matrix
-    Emat = inter.integrated_boltzmann_over_cell(separation, ext.dx, ext.beta) #Eq. (2.1)
+    Emat = inter.integrated_boltzmann_over_cell(separation, ext.dx, beta) #Eq. (2.1)
 
     n = ext.nsize
     left = np.ones(n)
@@ -42,16 +38,76 @@ def solve(parameter_file: str = "parameters.dat") -> tuple[np.ndarray, np.ndarra
     grand_partition = 1.0 + ext.dx * np.sum(Wvec * left) #I actually do not remember where I got this from. Now I cannot find it on the paper
     density = Wvec * left * right / grand_partition #Eq. (2.7)
 
-    np.savetxt(indata.out_file+"/dprof_T_"+str(ext.temp)+"_mu_"+str(ext.mu)+"_sw_r0_"+str(inter.r0)+"_epsilon_"+str(inter.eps)+".dat", np.column_stack((ext.xg, density)))
-    #output = Path(indata.out_file)
-    #output.parent.mkdir(parents=True, exist_ok=True)
-    #np.savetxt(output, np.column_stack((ext.xg, density)))
+    #np.savetxt(indata.out_file+"/dprof_T_"+str(ext.temp)+"_mu_"+str(ext.mu)+"_sw_r0_"+str(inter.r0)+"_epsilon_"+str(inter.eps)+".dat", np.column_stack((ext.xg, density)))
     return ext.xg, density, grand_partition
 
 
 if __name__ == "__main__":
-    import sys
-    parameter_file = sys.argv[1] if len(sys.argv) > 1 else "parameters.dat"
-    x, rho, xi = solve(parameter_file)
-    print(f"Xi = {xi:.12g}")
-    print(f"<N> = {np.trapezoid(rho, x):.12g}")
+    
+    #Set sw interaction potential
+    inter = Interaction("square-well", sigma=1.0, r0=1.8, epsilon=1.0)
+    
+    #Set length and spacing of external potential
+    length = 12.0
+    dx = 0.01
+    
+    #Set range of parameters
+    mu_max = -2.0
+    mu_min = -2.0
+    temp_min = 0.01
+    temp_max = 0.01
+    
+    #Set number of calculations
+    ncal = 1
+    #Create all solutions
+    for i in range(ncal):
+        mu = np.random.uniform(mu_min, mu_max)
+        temp = np.random.uniform(temp_min, temp_max)
+        Vext = ExternalPotential(length=length, dx=dx)
+        Vext.generate_Vext()
+        
+        #Get the theoretical density
+        t01 = time.time()
+        xg, density, xi_t = solve(inter, Vext, mu, 1.0/temp)
+        t02 = time.time()
+        nparticles = np.trapezoid(density, xg)
+        #Print number of particles
+        print("********  "+str(i)+"  **********")
+        print(f"mu = {mu:.12g}")
+        print(f"T = {temp:.12g}")
+        print(f"Xi = {xi_t:.12g}")
+        print(f"<N> = {nparticles:.12g}")
+        
+        
+        #Do the Monte Carlo sampling as Florian does
+        #xs, rho = simulate(
+        #    length,
+        #    mu,
+        #    temp,
+        #    Vext.V,
+        #    inter.phi,
+        #    equilibration_time=50.0,
+        #    production_time=500.0,
+        #    sweep_transitions=10,
+        #    bins=len(xg),
+        #    seed=123,
+        #)
+        
+        t03 = time.time()
+        
+        print("Execution time theory: ", t02-t01, " seconds")
+        print("Execution time simulation: ", t03-t02, " seconds")
+        
+        head = "mu = "+str(mu)+",   T = "+str(temp)+"\nnparticles = "+str(nparticles)+",  Xi_total = "+str(xi_t)+"\n\nx  beta*(\mu-Vext) Vext  density(theory)  density(simulation)\n"
+        #np.savetxt("d"+str(i).zfill(3)+".dat", np.column_stack((Vext.xg, -(Vext.V-mu)/temp, Vext.V, density, rho)), header=head)
+        np.savetxt("d"+str(i).zfill(3)+".dat", np.column_stack((Vext.xg, Vext.V, density)), header=head)
+        
+        fig, axs = plt.subplots(2, 1) 
+        axs[0].set_xlim((0,length))
+        axs[0].plot(Vext.xg, Vext.V)
+        
+        axs[1].set_xlim((0,length))
+        #axs[1].plot(xs, rho)
+        axs[1].plot(Vext.xg, density)
+        
+        plt.show()

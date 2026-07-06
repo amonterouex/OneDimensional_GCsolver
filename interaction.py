@@ -1,5 +1,5 @@
 import numpy as np
-
+import random
 
 class Interaction:
     """Hard-core, finite-range nearest-neighbor pair interaction."""
@@ -22,6 +22,22 @@ class Interaction:
         self.sigma = float(sigma)
         self.r0 = float(r0)
         self.eps = float(epsilon)
+        
+    def phi(self, r):
+        scalar_input = np.isscalar(r)
+        r = np.asarray(r)
+
+        values = np.zeros_like(r, dtype=float)
+
+        values[r < self.sigma] = np.inf
+        values[(r >= self.sigma) & (r <= self.r0)] = -self.eps
+        values[r > self.r0] = 0.0
+
+        if scalar_input:
+            return float(values)
+
+        return values
+        
 
     # This is very optimized for the discontinuities in the square-well. If later on one wants to include different potentials
     # or different numbers of discontinuities this should be changed
@@ -42,17 +58,27 @@ class Interaction:
         free_length = np.maximum(0.0, hi - np.maximum(lo, self.r0))
         return np.exp(beta * self.eps) * well_length + free_length
 
+class ExternalPotentialFlorian:
+    def __init__(self, length, dx):
+        self.dx = dx
+        self.length = length
+        self.xg = np.arange(dx/2.0, length, dx)
+        self.nsize = len(self.xg)
 
 class ExternalPotential:
-    def __init__(self, filename: str, mu: float, temp: float):
-        if not np.isfinite(temp) or temp <= 0.0:
-            raise ValueError("temperature must be finite and positive")
-        self.file = filename
-        self.mu = float(mu)
-        self.temp = float(temp)
-        self.beta = 1.0 / self.temp
-        self.load_file(filename)
+    def __init__(self, length=None, dx=None, filename=None):
+        if filename is not None:
+            self.fname = filename
 
+        elif length is not None and dx is not None:
+            self.dx = dx
+            self.length = length
+            self.xg = np.arange(dx / 2.0, length, dx)
+            self.nsize = len(self.xg)
+
+        else:
+            raise ValueError("Provide either filename or both length and dx")
+        
     def load_file(self, filename: str) -> None:
         dat = np.loadtxt(filename)
         if dat.ndim != 2 or dat.shape[1] < 2 or dat.shape[0] < 2:
@@ -65,8 +91,65 @@ class ExternalPotential:
         if not np.allclose(np.diff(self.xg), self.dx, rtol=1e-12, atol=1e-14):
             raise ValueError("x grid is not equally spaced")
 
-        #Add -self.temp and set mu=0 when comparing with Florians files
-        self.Vext = -self.temp*np.asarray(dat[:, 1], dtype=float)
+        #Add - and set mu=0 when comparing with Florians files
+        self.V = -np.asarray(dat[:, 1], dtype=float)
         # Read in my own external potential
         #self.Vext = np.asarray(dat[:, 1], dtype=float)
-        self.nsize = self.xg.size
+        self.length = self.xg.size
+       
+    def Vext_sin(self, x, *, n: int, A: float, phi: float, L: float):
+        x = np.asarray(x)
+        return A * np.sin(2 * np.pi * x * n / L + phi)
+
+    def Vext_lin(self, x, *, x1: float, x2: float, E1: float, E2: float):
+        x = np.asarray(x)
+        # Avoid division by zero if x1 == x2
+        if x1 == x2:
+            return np.zeros_like(x, dtype=float)
+        mask = (x > x1) & (x < x2)
+        values = E1 + (x - x1) * (E2 - E1) / (x2 - x1)
+        return np.where(mask, values, 0.0)
+
+    def Vext_wall(self, x, *, xw: float, L: float):
+        x = np.asarray(x)
+        if xw < 1.0:
+            mask = (x < xw) | (x > L - (2.0-xw)) #Change this with respect to Florian's code to avoid PBC issues in the simulation
+        else:
+            mask = (x < xw) | (x > L - xw)
+            
+        return np.where(mask, np.inf, 0.0)
+
+    def generate_Vext(self, *, num_sin: int = 4, num_lin: int | None = None, wall: bool = True,):
+        
+        L = self.length
+        x = self.xg
+        
+        if num_lin is None:
+            num_lin = np.random.randint(1, 6)
+
+        Avar = 1.0
+        sin_parameters = []
+        for n in range(1, num_sin + 1):
+            sin_parameters.append({"n": n, "A": np.random.randn() * Avar, "phi": np.random.rand() * 2 * np.pi, "L": L, })
+
+        Evar = 1.0
+        lin_parameters = []
+        for _ in range(num_lin):  lin_parameters.append({"x1": round(np.random.rand() * L, 2),"x2": round(np.random.rand() * L, 2), "E1": np.random.randn() * Evar,"E2": np.random.randn() * Evar,})
+
+        xwmax = 2.0
+        wall_params = {"xw": round(np.random.rand() * xwmax, 2), "L": L,}
+
+        result = np.zeros_like(x, dtype=float)
+
+        for sin_params in sin_parameters:
+            result += self.Vext_sin(x, **sin_params)
+            
+        for lin_params in lin_parameters:
+            result += self.Vext_lin(x, **lin_params)
+
+        if wall:
+            result += self.Vext_wall(x, **wall_params)
+
+        self.V = result
+        self.xg = x
+        
