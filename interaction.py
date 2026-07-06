@@ -112,11 +112,9 @@ class ExternalPotential:
 
     def Vext_wall(self, x, *, xw: float, L: float):
         x = np.asarray(x)
-        if xw < 1.0:
-            mask = (x < xw) | (x > L - (2.0-xw)) #Change this with respect to Florian's code to avoid PBC issues in the simulation
-        else:
-            mask = (x < xw) | (x > L - xw)
-            
+        #mask = (x < xw) | (x > L - (2.0-xw)) #Change this with respect to Florian's code to avoid PBC issues in the simulation
+        mask = (x < xw) | (x > L - xw) #Change this with respect to Florian's code to avoid PBC issues in the simulation
+
         return np.where(mask, np.inf, 0.0)
 
     def generate_Vext(self, *, num_sin: int = 4, num_lin: int | None = None, wall: bool = True,):

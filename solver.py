@@ -3,7 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from interaction import Interaction, ExternalPotential
-from neuraldft_simulate import simulate
 
 '''
 The implementation in this solver is based on Percus' 1982 paper:
@@ -53,12 +52,13 @@ if __name__ == "__main__":
     
     #Set range of parameters
     mu_max = -2.0
-    mu_min = -2.0
+    mu_min = 2.0
     temp_min = 0.01
-    temp_max = 0.01
+    temp_max = 10.0
     
     #Set number of calculations
     ncal = 1
+
     #Create all solutions
     for i in range(ncal):
         mu = np.random.uniform(mu_min, mu_max)
@@ -78,30 +78,13 @@ if __name__ == "__main__":
         print(f"Xi = {xi_t:.12g}")
         print(f"<N> = {nparticles:.12g}")
         
-        
-        #Do the Monte Carlo sampling as Florian does
-        #xs, rho = simulate(
-        #    length,
-        #    mu,
-        #    temp,
-        #    Vext.V,
-        #    inter.phi,
-        #    equilibration_time=50.0,
-        #    production_time=500.0,
-        #    sweep_transitions=10,
-        #    bins=len(xg),
-        #    seed=123,
-        #)
-        
-        t03 = time.time()
-        
-        print("Execution time theory: ", t02-t01, " seconds")
-        print("Execution time simulation: ", t03-t02, " seconds")
+        print("Execution time: ", t02-t01, " seconds")
         
         head = "mu = "+str(mu)+",   T = "+str(temp)+"\nnparticles = "+str(nparticles)+",  Xi_total = "+str(xi_t)+"\n\nx  beta*(\mu-Vext) Vext  density(theory)  density(simulation)\n"
-        #np.savetxt("d"+str(i).zfill(3)+".dat", np.column_stack((Vext.xg, -(Vext.V-mu)/temp, Vext.V, density, rho)), header=head)
-        np.savetxt("d"+str(i).zfill(3)+".dat", np.column_stack((Vext.xg, Vext.V, density)), header=head)
+        np.savetxt("d"+str(i).zfill(3)+".dat", np.column_stack((Vext.xg, -(Vext.V-mu)/temp, Vext.V, density)), header=head)
+        #np.savetxt("d"+str(i).zfill(3)+".dat", np.column_stack((Vext.xg, Vext.V, density)), header=head)
         
+        '''
         fig, axs = plt.subplots(2, 1) 
         axs[0].set_xlim((0,length))
         axs[0].plot(Vext.xg, Vext.V)
@@ -111,3 +94,4 @@ if __name__ == "__main__":
         axs[1].plot(Vext.xg, density)
         
         plt.show()
+        '''
