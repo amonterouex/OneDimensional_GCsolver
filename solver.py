@@ -34,11 +34,15 @@ def solve(inter: Interaction, ext: ExternalPotential, mu:float, beta:float) -> t
     for i in range(n - 1, -1, -1):
         right[i] = 1.0 + np.dot(Emat[i + 1 :, i], Wvec[i + 1 :] * right[i + 1 :])
 
-    grand_partition = 1.0 + ext.dx * np.sum(Wvec * left) #I actually do not remember where I got this from. Now I cannot find it on the paper
-    density = Wvec * left * right / grand_partition #Eq. (2.7)
 
-    #np.savetxt(indata.out_file+"/dprof_T_"+str(ext.temp)+"_mu_"+str(ext.mu)+"_sw_r0_"+str(inter.r0)+"_epsilon_"+str(inter.eps)+".dat", np.column_stack((ext.xg, density)))
-    return ext.xg, density, grand_partition
+    grand_partition_left = 1.0 + ext.dx * np.sum(Wvec * left)
+    #grand_partition_right = 1.0 + ext.dx * np.sum(Wvec * right)
+
+    density = Wvec * left * right / grand_partition_left #Eq. (2.7)
+
+    #np.savetxt("dprof_T_"+str(ext.temp)+"_mu_"+str(ext.mu)+"_sw_r0_"+str(inter.r0)+"_epsilon_"+str(inter.eps)+".dat", np.column_stack((ext.xg, density)))
+
+    return ext.xg, density, grand_partition_left
 
 
 if __name__ == "__main__":
@@ -80,7 +84,7 @@ if __name__ == "__main__":
         
         print("Execution time: ", t02-t01, " seconds")
         
-        head = "mu = "+str(mu)+",   T = "+str(temp)+"\nnparticles = "+str(nparticles)+",  Xi_total = "+str(xi_t)+"\n\nx  beta*(\mu-Vext) Vext  density(theory)  density(simulation)\n"
+        head = "mu = "+str(mu)+",   T = "+str(temp)+"\nnparticles = "+str(nparticles)+",  Xi_total = "+str(xi_t)+"\n\nx  beta*(\mu-Vext) Vext  density(theory)\n"
         np.savetxt("d"+str(i).zfill(3)+".dat", np.column_stack((Vext.xg, -(Vext.V-mu)/temp, Vext.V, density)), header=head)
         #np.savetxt("d"+str(i).zfill(3)+".dat", np.column_stack((Vext.xg, Vext.V, density)), header=head)
         

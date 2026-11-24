@@ -58,6 +58,26 @@ class Interaction:
         free_length = np.maximum(0.0, hi - np.maximum(lo, self.r0))
         return np.exp(beta * self.eps) * well_length + free_length
 
+        # This is very optimized for the discontinuities in the square-well. If later on one wants to include different potentials
+    # or different numbers of discontinuities this should be changed
+    def log_integrated_boltzmann_over_cell(self, separation: np.ndarray, dx: float, beta: float) -> np.ndarray:
+        """
+        - Integrate exp[-beta u(r)] across one source cell. This avoids assigning a full quadrature weight to either side of the
+        discontinuities at sigma and r0.
+        - The returned matrix already contains the length factor; do not multiply it by dx again later on.
+        """
+        if self.kind != "square-well":
+            raise NotImplementedError("Cell integration is implemented for square-well only")
+
+        lo = separation - 0.5 * dx
+        hi = separation + 0.5 * dx
+
+        # This took the a while to derive but I am pretty sure it is correct
+        well_length = np.maximum(0.0, np.minimum(hi, self.r0) - np.maximum(lo, self.sigma))
+        free_length = np.maximum(0.0, hi - np.maximum(lo, self.r0))
+        with np.errstate(divide="ignore"):
+            return np.logaddexp(beta*self.eps + np.log(well_length), np.log(free_length))
+
 class ExternalPotentialFlorian:
     def __init__(self, length, dx):
         self.dx = dx
@@ -94,7 +114,7 @@ class ExternalPotential:
         #Add - and set mu=0 when comparing with Florians files
         self.V = -np.asarray(dat[:, 1], dtype=float)
         # Read in my own external potential
-        #self.Vext = np.asarray(dat[:, 1], dtype=float)
+        #self.V = np.asarray(dat[:, 1], dtype=float)
         self.length = self.xg.size
        
     def Vext_sin(self, x, *, n: int, A: float, phi: float, L: float):
